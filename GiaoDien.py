@@ -4,13 +4,58 @@ import pyodbc
 
 app = Flask(__name__)
 
-# ================= DB =================
 import os
+import sqlite3
+import pyodbc
 
 def get_conn():
+    # chạy trên Render
+    if os.getenv("RENDER"):
+        conn = sqlite3.connect("erp.db")
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    # chạy local SQL Server
     return pyodbc.connect(
-        os.getenv("DB_CONN")
+        "DRIVER={SQL Server};"
+        "SERVER=PHUCLG\\PHUCLG;"
+        "DATABASE=PNL;"
+        "UID=phuclg;"
+        "PWD=Phucngoc123@;"
     )
+def init_sqlite():
+    conn = sqlite3.connect("erp.db")
+    cur = conn.cursor()
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS KhachHang(
+        KhachHangID INTEGER PRIMARY KEY AUTOINCREMENT,
+        MaKhachHang TEXT,
+        TenKhachHang TEXT,
+        MaSoThue TEXT,
+        DienThoai TEXT,
+        Email TEXT
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS HopDong(
+        HopDongID INTEGER PRIMARY KEY AUTOINCREMENT,
+        SoHopDong TEXT,
+        KhachHangID INTEGER,
+        NgayKy TEXT,
+        NgayBatDau TEXT,
+        NgayKetThuc TEXT,
+        TongTien REAL,
+        TienTamUng REAL,
+        NgayTamUng TEXT,
+        LoaiThanhToan TEXT,
+        TrangThai TEXT
+    )
+    """)
+
+    conn.commit()
+    conn.close()
 
 # ================= DASHBOARD =================
 DASHBOARD = """
@@ -966,4 +1011,7 @@ def edit_contract(id):
         customers=customers  # Truyền danh sách khách hàng vào form
     )
 if __name__ == "__main__":
+    if os.getenv("RENDER"):
+        init_sqlite()
+
     app.run(debug=True)
