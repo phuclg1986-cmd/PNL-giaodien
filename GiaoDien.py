@@ -1,1020 +1,1158 @@
 from flask import Flask, render_template_string, request, redirect
 from decimal import Decimal
 import pyodbc
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 app = Flask(__name__)
 
-import os
-import sqlite3
-import pyodbc
-
+# ================= DB =================
 def get_conn():
-    # chạy trên Render
-    if os.getenv("RENDER"):
-        conn = sqlite3.connect("erp.db")
-        conn.row_factory = sqlite3.Row
-        return conn
-
-    # chạy local SQL Server
     return pyodbc.connect(
-        "DRIVER={SQL Server};"
-        "SERVER=PHUCLG\\PHUCLG;"
-        "DATABASE=PNL;"
-        "UID=phuclg;"
-        "PWD=Phucngoc123@;"
+        f"DRIVER={{SQL Server}};"
+        f"SERVER={os.getenv('DB_SERVER')};"
+        f"DATABASE={os.getenv('DB_NAME')};"
+        f"UID={os.getenv('DB_UID')};"
+        f"PWD={os.getenv('DB_PWD')};"
     )
-def init_sqlite():
-    conn = sqlite3.connect("erp.db")
-    cur = conn.cursor()
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS KhachHang(
-        KhachHangID INTEGER PRIMARY KEY AUTOINCREMENT,
-        MaKhachHang TEXT,
-        TenKhachHang TEXT,
-        MaSoThue TEXT,
-        DienThoai TEXT,
-        Email TEXT
-    )
-    """)
+# ================= BASE LAYOUT =================
+BASE_STYLE = """
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS HopDong(
-        HopDongID INTEGER PRIMARY KEY AUTOINCREMENT,
-        SoHopDong TEXT,
-        KhachHangID INTEGER,
-        NgayKy TEXT,
-        NgayBatDau TEXT,
-        NgayKetThuc TEXT,
-        TongTien REAL,
-        TienTamUng REAL,
-        NgayTamUng TEXT,
-        LoaiThanhToan TEXT,
-        TrangThai TEXT
-    )
-    """)
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    conn.commit()
-    conn.close()
-    # 👇 PHẢI CÓ ĐOẠN NÀY
-if os.getenv("RENDER"):
-    init_sqlite()
+:root {
+  --bg:        #f0f4f8;
+  --surface:   #ffffff;
+  --surface2:  #f8fafc;
+  --border:    #e2e8f0;
+  --accent:    #3b82f6;
+  --accent2:   #6366f1;
+  --green:     #16a34a;
+  --yellow:    #d97706;
+  --red:       #dc2626;
+  --text:      #1e293b;
+  --muted:     #64748b;
+  --radius:    14px;
+  --font:      'Sora', sans-serif;
+  --mono:      'JetBrains Mono', monospace;
+}
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+}
+
+/* ===== SIDEBAR ===== */
+.sidebar {
+  width: 240px;
+  min-height: 100vh;
+  background: #1e3a5f;
+  border-right: none;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 16px;
+  position: fixed;
+  top: 0; left: 0;
+  z-index: 100;
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 28px;
+}
+
+.logo-icon {
+  width: 36px; height: 36px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+
+.logo-text {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: white;
+}
+
+.nav-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: rgba(255,255,255,.4);
+  text-transform: uppercase;
+  padding: 0 12px;
+  margin-bottom: 8px;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: rgba(255,255,255,.6);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all .18s ease;
+  margin-bottom: 2px;
+}
+
+.nav-link:hover,
+.nav-link.active {
+  background: rgba(255,255,255,.12);
+  color: white;
+}
+
+.nav-link.active {
+  color: white;
+}
+
+.nav-icon {
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  font-size: 15px;
+}
+
+.nav-link.active .nav-icon { background: rgba(255,255,255,.15); }
+
+/* ===== MAIN ===== */
+.main {
+  margin-left: 240px;
+  flex: 1;
+  padding: 28px 32px;
+  min-height: 100vh;
+}
+
+/* ===== PAGE HEADER ===== */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+.page-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.page-sub {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* ===== STAT CARDS ===== */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color .2s;
+}
+
+.stat-card:hover { border-color: #2d3748; }
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+}
+
+.stat-card.c1::before { background: linear-gradient(90deg, #3b82f6, #6366f1); }
+.stat-card.c2::before { background: linear-gradient(90deg, #22c55e, #10b981); }
+.stat-card.c3::before { background: linear-gradient(90deg, #f59e0b, #f97316); }
+.stat-card.c4::before { background: linear-gradient(90deg, #ef4444, #ec4899); }
+
+.stat-icon {
+  font-size: 22px;
+  margin-bottom: 12px;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-bottom: 6px;
+}
+
+.stat-val {
+  font-size: 26px;
+  font-weight: 700;
+  color: white;
+}
+
+/* ===== CARD / TABLE ===== */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.card-head {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+thead th {
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: #f1f5f9;
+  border-bottom: 1px solid var(--border);
+}
+
+tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background .15s;
+}
+
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--surface2); }
+
+tbody td {
+  padding: 13px 16px;
+  color: var(--text);
+}
+
+.id-cell {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.money-cell {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--green);
+  font-weight: 600;
+}
+
+/* ===== BADGES ===== */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+}
+
+.badge-draft  { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
+.badge-active { background: #dcfce7; color: #16a34a; border: 1px solid #bbf7d0; }
+.badge-done   { background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.badge-month  { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+.badge-year   { background: #ede9fe; color: #6d28d9; border: 1px solid #ddd6fe; }
+.badge-once   { background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; }
+
+/* ===== BUTTONS ===== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font);
+  cursor: pointer;
+  border: none;
+  text-decoration: none;
+  transition: all .15s;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+}
+.btn-primary:hover { background: #2563eb; color: white; }
+
+.btn-warning {
+  background: rgba(245,158,11,.15);
+  color: var(--yellow);
+  border: 1px solid rgba(245,158,11,.2);
+}
+.btn-warning:hover { background: rgba(245,158,11,.25); }
+
+.btn-danger {
+  background: rgba(239,68,68,.12);
+  color: var(--red);
+  border: 1px solid rgba(239,68,68,.2);
+}
+.btn-danger:hover { background: rgba(239,68,68,.22); }
+
+.btn-ghost {
+  background: white;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover { color: var(--text); background: #f1f5f9; }
+
+.btn-sm {
+  padding: 5px 11px;
+  font-size: 12px;
+  border-radius: 7px;
+}
+
+/* ===== MODAL ===== */
+.modal-bg {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.7);
+  backdrop-filter: blur(4px);
+  z-index: 999;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  overflow-y: auto;
+}
+
+.modal-bg.open { display: flex; }
+
+.modal-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  width: 100%;
+  max-width: 860px;
+  padding: 28px;
+  animation: slideUp .25s ease;
+}
+
+@keyframes slideUp {
+  from { opacity:0; transform:translateY(20px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+.modal-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.group-box {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 14px;
+}
+
+.group-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+
+.form-row {
+  display: grid;
+  gap: 12px;
+}
+
+.form-row.cols-2 { grid-template-columns: 1fr 1fr; }
+.form-row.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+.form-row.cols-4 { grid-template-columns: 2fr 3fr 2fr; }
+
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+
+label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: .02em;
+}
+
+input, select, textarea {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13.5px;
+  padding: 9px 13px;
+  width: 100%;
+  outline: none;
+  transition: border-color .15s;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59,130,246,.1);
+}
+
+select option { background: white; }
+
+.modal-footer {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+/* ===== ACTION CELL ===== */
+.action-cell {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* ===== FORM PAGE ===== */
+.form-page {
+  max-width: 640px;
+}
+
+.form-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 30px;
+}
+
+.form-card h2 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 20px;
+}
+
+/* ===== DIVIDER ===== */
+hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+"""
+
+# ================= SIDEBAR NAV =================
+def sidebar(active=""):
+    links = [
+        ("/",           "dashboard", "📊", "Dashboard"),
+        ("/customers",  "customers", "👤", "Khách hàng"),
+        ("/contracts",  "contracts", "📄", "Hợp đồng"),
+    ]
+    items = ""
+    for href, key, icon, label in links:
+        cls = "nav-link active" if active == key else "nav-link"
+        items += f'<a href="{href}" class="{cls}"><span class="nav-icon">{icon}</span>{label}</a>\n'
+
+    return f"""
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon">⚙</div>
+        <span class="logo-text">ERP SYSTEM</span>
+      </div>
+      <div class="nav-label">Menu</div>
+      {items}
+    </aside>
+    """
+
+def page(title, content, active="", extra_head=""):
+    nav = sidebar(active)
+    return f"""<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title} — ERP</title>
+<style>{BASE_STYLE}</style>
+{extra_head}
+</head>
+<body>
+{nav}
+<div class="main">
+{content}
+</div>
+</body>
+</html>"""
 
 # ================= DASHBOARD =================
-DASHBOARD = """
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>ERP DASHBOARD</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-
-<style>
-body{background:#eef2f7;}
-.sidebar{
-    height:100vh;
-    background:linear-gradient(180deg,#0f172a,#111827);
-    color:white;
-    padding:20px;
-}
-.sidebar a{
-    display:block;
-    color:#cbd5e1;
-    padding:10px;
-    text-decoration:none;
-    border-radius:8px;
-    margin-bottom:5px;
-}
-.sidebar a:hover{background:#1f2937;}
-.topbar{
-    background:white;
-    padding:15px;
-    border-radius:12px;
-    margin-bottom:20px;
-}
-.card-box{
-    background:white;
-    padding:20px;
-    border-radius:16px;
-    box-shadow:0 2px 10px rgba(0,0,0,0.06);
-}
-.c1{background:linear-gradient(135deg,#3b82f6,#60a5fa);color:white;}
-.c2{background:linear-gradient(135deg,#22c55e,#86efac);color:white;}
-.c3{background:linear-gradient(135deg,#f59e0b,#fcd34d);color:white;}
-.c4{background:linear-gradient(135deg,#ef4444,#f87171);color:white;}
-.stat-title{font-size:14px;}
-.stat-value{font-size:28px;font-weight:bold;}
-</style>
-</head>
-
-<body>
-<div class="container-fluid">
-<div class="row">
-
-<div class="col-2 sidebar">
-<h4>⚙ ERP SYSTEM</h4>
-<hr>
-<a href="/">📊 Dashboard</a>
-<a href="/customers">👤 Khách hàng</a>
-<a href="/contracts">📄 Hợp đồng</a>
-</div>
-
-<div class="col-10 p-4">
-
-<div class="topbar">
-<h3>📊 Dashboard</h3>
-<small>Hệ thống ERP mini</small>
-</div>
-
-<div class="row g-3">
-
-<div class="col-md-3">
-<div class="card-box c1">
-<div class="stat-title">Khách hàng</div>
-<div class="stat-value">ERP</div>
-</div>
-</div>
-
-<div class="col-md-3">
-<div class="card-box c2">
-<div class="stat-title">Hợp đồng</div>
-<div class="stat-value">READY</div>
-</div>
-</div>
-
-<div class="col-md-3">
-<div class="card-box c3">
-<div class="stat-title">Thu tiền</div>
-<div class="stat-value">OK</div>
-</div>
-</div>
-
-<div class="col-md-3">
-<div class="card-box c4">
-<div class="stat-title">Quản trị</div>
-<div class="stat-value">LIVE</div>
-</div>
-</div>
-
-</div>
-
-</div>
-</div>
-</div>
-</body>
-</html>
-"""
-
-# ================= CUSTOMERS =================
-CUSTOMERS_HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Khách hàng</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-
-<style>
-body{background:#f1f5f9;}
-.sidebar{
-    height:100vh;
-    background:#0f172a;
-    color:white;
-    padding:20px;
-}
-.sidebar a{
-    display:block;
-    color:#cbd5e1;
-    padding:10px;
-    text-decoration:none;
-}
-.sidebar a:hover{background:#1e293b;}
-.content{padding:20px;}
-.card-box{
-    background:white;
-    padding:20px;
-    border-radius:14px;
-}
-thead{
-    background:#0f172a;
-    color:white;
-}
-</style>
-</head>
-
-<body>
-<div class="container-fluid">
-<div class="row">
-
-<div class="col-2 sidebar">
-<h4>⚙ ERP</h4>
-<hr>
-<a href="/">📊 Dashboard</a>
-<a href="/customers">👤 Khách hàng</a>
-<a href="/contracts">📄 Hợp đồng</a>
-</div>
-
-<div class="col-10 content">
-
-<h2>👤 Danh sách khách hàng</h2>
-
-<button class="btn btn-primary mb-3"
-onclick="document.getElementById('popup').style.display='block'">
-➕ Thêm mới
-</button>
-
-<div class="card-box">
-<table class="table table-bordered table-hover">
-
-<thead>
-<tr>
-<th>ID</th>
-<th>Mã KH</th>
-<th>Tên</th>
-<th>MST</th>
-<th>Điện thoại</th>
-<th>Email</th>
-<th>Xóa</th>
-<th>EIDT</th>
-</tr>
-</thead>
-
-<tbody>
-{% for r in customers %}
-<tr>
-<td>{{r[0]}}</td>
-<td>{{r[1]}}</td>
-<td>{{r[2]}}</td>
-<td>{{r[3]}}</td>
-<td>{{r[4]}}</td>
-<td>{{r[5]}}</td>
-<td>
-<a href="/customers/delete/{{r[0]}}" class="btn btn-danger btn-sm"
-onclick="return confirm('Xóa khách hàng này?')">🗑 Xóa</a>
-</td>
-<td>
-<a href="/customers/edit/{{r[0]}}"
-class="btn btn-warning btn-sm">
-✏ Sửa
-</a>
-</td>
-</tr>
-{% endfor %}
-</tbody>
-
-</table>
-</div>
-</div>
-</div>
-</div>
-
-<div id="popup" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);">
-<div style="width:450px;background:white;margin:80px auto;padding:20px;border-radius:12px;">
-
-<h4>➕ Thêm khách hàng</h4>
-
-<form method="POST">
-<input name="ma_kh" class="form-control mb-2" placeholder="Mã khách hàng" required>
-<input name="ten_kh" class="form-control mb-2" placeholder="Tên khách hàng" required>
-<input name="mst" class="form-control mb-2" placeholder="Mã số thuế">
-<input name="dt" class="form-control mb-2" placeholder="Điện thoại">
-<input name="email" class="form-control mb-2" placeholder="Email">
-
-<button class="btn btn-success">💾 Lưu</button>
-<button type="button" class="btn btn-danger"
-onclick="document.getElementById('popup').style.display='none'">❌ Đóng</button>
-</form>
-
-</div>
-</div>
-
-</body>
-</html>
-"""
-# ================= Eidt CUSTOMERS =================
-
-EDIT_CUSTOMER_HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Sửa</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-
-<body style="background:#eef2f7">
-
-<div class="container mt-5">
-<div class="card shadow p-4">
-
-<h2>✏Sửa</h2>
-<hr>
-
-<form method="POST">
-
-<label>Mã khách hàng</label>
-<input name="ma_kh" value="{{row[1]}}" class="form-control mb-3">
-
-<label>Tên khách hàng</label>
-<input name="ten_kh" value="{{row[2]}}" class="form-control mb-3">
-
-<label>Mã số thuế</label>
-<input name="mst" value="{{row[3]}}" class="form-control mb-3">
-
-<label>Điện thoại</label>
-<input name="dt" value="{{row[4]}}" class="form-control mb-3">
-
-<label>Email</label>
-<input name="email" value="{{row[5]}}" class="form-control mb-3">
-
-<button class="btn btn-success">💾 Cập nhật</button>
-<a href="/customers" class="btn btn-secondary">↩ Quay lại</a>
-
-</form>
-
-</div>
-</div>
-
-</body>
-</html>
-"""
-
-# ================= CONTRACT =================
-CONTRACT_HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Hợp đồng ERP</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-
-<style>
-body{background:#eef2f7;font-family:Arial;}
-.sidebar{
-    min-height:100vh;
-    background:linear-gradient(180deg,#0f172a,#111827);
-    color:white;
-    padding:20px;
-}
-.sidebar a{
-    display:block;
-    color:#cbd5e1;
-    padding:11px 12px;
-    text-decoration:none;
-    border-radius:10px;
-    margin-bottom:6px;
-}
-.sidebar a:hover{background:#1f2937;color:white;}
-
-.content{padding:22px;}
-
-.header-box{
-    background:white;
-    padding:18px 22px;
-    border-radius:14px;
-    margin-bottom:18px;
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    box-shadow:0 4px 14px rgba(0,0,0,.05);
-}
-
-.box{
-    background:white;
-    padding:20px;
-    border-radius:14px;
-    box-shadow:0 4px 14px rgba(0,0,0,.05);
-}
-
-.table thead th{
-    text-align:center;
-    vertical-align:middle;
-}
-
-.table tbody td{
-    vertical-align:middle;
-}
-
-.money{
-    font-weight:bold;
-    color:#16a34a;
-}
-
-.badge-run{background:#2563eb;}
-
-.btn-sm{
-    border-radius:8px;
-    padding:4px 10px;
-}
-
-.modal-bg{
-    display:none;
-    position:fixed;
-    top:0;left:0;
-    width:100%;
-    height:100%;
-    background:rgba(0,0,0,.55);
-    z-index:999;
-}
-
-.modal-box{
-    width:1150px;
-    max-width:95%;
-    background:white;
-    margin:35px auto;
-    padding:24px;
-    border-radius:18px;
-}
-
-.group-box{
-    border:1px solid #e5e7eb;
-    border-radius:14px;
-    padding:18px;
-    margin-bottom:16px;
-}
-
-.group-box h6{
-    font-weight:bold;
-    margin-bottom:14px;
-}
-
-label{
-    font-size:13px;
-    font-weight:600;
-    margin-bottom:4px;
-}
-
-.form-control,.form-select{
-    border-radius:10px;
-    height:42px;
-}
-
-textarea.form-control{
-    height:auto;
-}
-</style>
-</head>
-
-<body>
-
-<div class="container-fluid">
-<div class="row">
-
-<div class="col-md-2 sidebar">
-<h4>⚙ ERP</h4>
-<hr>
-<a href="/">📊 Dashboard</a>
-<a href="/customers">👤 Khách hàng</a>
-<a href="/contracts">📄 Hợp đồng</a>
-</div>
-
-<div class="col-md-10 content">
-
-<div class="header-box">
-<div>
-<h4 class="mb-1">📄 Danh sách hợp đồng</h4>
-<small class="text-muted">Quản lý hợp đồng khách hàng</small>
-</div>
-
-<button class="btn btn-primary px-4"
-onclick="document.getElementById('modal').style.display='block'">
-➕ Thêm hợp đồng
-</button>
-</div>
-
-<div class="box">
-
-<div class="table-responsive">
-
-<table class="table table-bordered table-hover">
-<thead class="table-dark">
-<tr>
-<th>ID</th>
-<th>Số HĐ</th>
-<th>Khách hàng</th>
-<th>Ngày ký</th>
-<th>Bắt đầu</th>
-<th>Kết thúc</th>
-<th>Tổng tiền</th>
-<th>Tạm ứng</th>
-<th>Trạng thái</th>
-<th width="170">Trạng thái</th>
-<th width="170">Thao tác</th>
-
-</tr>
-</thead>
-
-<tbody>
-
-{% for r in rows %}
-<tr>
-<td class="text-center">{{r[0]}}</td>
-<td>{{r[1]}}</td>
-<td>{{r[2]}}</td>
-<td>{{r[3]}}</td>
-<td>{{r[4]}}</td>
-<td>{{r[5]}}</td>
-<td>{{r[6]}}</td>
-<td class="money text-end">{{r[7]}}</td>
-<td class="text-end">{{r[8]}}</td>
-
-<td class="text-center">
-<span class="badge badge-run">{{r[9]}}</span>
-</td>
-
-<td class="text-center">
-
-<a href="/contracts/edit/{{r[10]}}"
-class="btn btn-warning btn-sm">
-✏ Edit
-</a>
-
-<a href="/contracts/delete/{{r[10]}}"
-class="btn btn-danger btn-sm"
-onclick="return confirm('Xóa hợp đồng này?')">
-🗑 Delete
-</a>
-
-</td>
-
-</tr>
-{% endfor %}
-
-</tbody>
-</table>
-
-</div>
-</div>
-
-</div>
-</div>
-</div>
-
-<!-- MODAL THÊM -->
-<div id="modal" class="modal-bg">
-<div class="modal-box">
-
-<h4 class="mb-3">📄 Thêm hợp đồng mới</h4>
-
-<form method="POST">
-
-<div class="group-box">
-<h6>Thông tin chung</h6>
-
-<div class="row">
-
-<div class="col-md-3">
-<label>Số hợp đồng</label>
-<input name="so_hd" class="form-control mb-3">
-</div>
-
-<div class="col-md-5">
-<label>Tên hợp đồng</label>
-<input name="ten_hd" class="form-control mb-3">
-</div>
-
-<div class="col-md-4">
-<label>Khách hàng</label>
-<select name="kh_id" class="form-select mb-3">
-<option value="">-- Chọn khách hàng --</option>
-{% for c in customers %}
-<option value="{{c[0]}}">{{c[1]}}</option>
-{% endfor %}
-</select>
-</div>
-
-</div>
-</div>
-
-<div class="group-box">
-<h6>Thời gian</h6>
-
-<div class="row">
-
-<div class="col-md-4">
-<label>Ngày ký</label>
-<input type="date" name="ngay_ky" class="form-control mb-3">
-</div>
-
-<div class="col-md-4">
-<label>Ngày bắt đầu</label>
-<input type="date" name="ngay_bd" class="form-control mb-3">
-</div>
-
-<div class="col-md-4">
-<label>Ngày kết thúc</label>
-<input type="date" name="ngay_kt" class="form-control mb-3">
-</div>
-
-</div>
-</div>
-
-<div class="group-box">
-<h6>Tài chính</h6>
-
-<div class="row">
-
-<div class="col-md-4">
-<label>Tổng tiền</label>
-<input name="tong_tien" class="form-control mb-3">
-</div>
-
-<div class="col-md-4">
-<label>Tạm ứng</label>
-<input name="tam_ung" class="form-control mb-3">
-</div>
-
-<div class="col-md-4">
-<label>Loại thanh toán</label>
-<select name="loai_tt" class="form-select mb-3">
-<option value="MONTH">Theo tháng</option>
-<option value="YEAR">Theo năm</option>
-<option value="ONCE">Một lần</option>
-</select>
-</div>
-
-</div>
-</div>
-
-<button class="btn btn-success px-4">💾 Lưu hợp đồng</button>
-
-<button type="button"
-class="btn btn-danger px-4"
-onclick="document.getElementById('modal').style.display='none'">
-❌ Đóng
-</button>
-
-</form>
-
-</div>
-</div>
-
-</body>
-</html>
-"""
-
-
-EDIT_CONTRACT_HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Sửa hợp đồng</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-
-<body style="background:#eef2f7">
-
-<div class="container mt-5">
-<div class="card shadow p-4">
-
-<h3>✏ Sửa hợp đồng</h3>
-<hr>
-
-<form method="POST">
-    <label for="so_hd">Số hợp đồng</label>
-    <input name="so_hd" value="{{ row[1] }}" class="form-control mb-3">
-
-    <label for="kh_id">Khách hàng</label>
-    <select name="kh_id" class="form-control mb-3">
-        {% for c in customers %}
-            <option value="{{ c[0] }}" {% if c[0] == row[2] %} selected {% endif %}>
-                {{ c[1] }}
-            </option>
-        {% endfor %}
-    </select>
-
-    <label for="ngay_ky">Ngày ký</label>
-    <input type="date" name="ngay_ky" value="{{ row[3] }}" class="form-control mb-3">
-
-    <label for="ngay_bd">Ngày bắt đầu</label>
-    <input type="date" name="ngay_bd" value="{{ row[4] }}" class="form-control mb-3">
-
-    <label for="ngay_kt">Ngày kết thúc</label>
-    <input type="date" name="ngay_kt" value="{{ row[5] }}" class="form-control mb-3">
-
-    <label for="tong_tien">Tổng tiền</label>
-    <input name="tong_tien" value="{{ row[6] }}" class="form-control mb-3"> <!-- row[6] cho Tổng tiền -->
-
-    <label for="tam_ung">Tạm ứng</label>
-    <input name="tam_ung" value="{{ row[7] }}" class="form-control mb-3"> <!-- row[7] cho Tạm ứng -->
-
-    <button class="btn btn-success">💾 Cập nhật</button>
-    <a href="/contracts" class="btn btn-secondary">↩ Quay lại</a>
-</form>
-
-</div>
-</div>
-
-</body>
-</html>
-"""
-
-# ================= ROUTES =================
-
 @app.route("/")
 def home():
-    return DASHBOARD
+    content = """
+    <div class="page-header">
+      <div>
+        <div class="page-title">Dashboard</div>
+        <div class="page-sub">Tổng quan hệ thống ERP</div>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card c1">
+        <div class="stat-icon">👤</div>
+        <div class="stat-label">Khách hàng</div>
+        <div class="stat-val">—</div>
+      </div>
+      <div class="stat-card c2">
+        <div class="stat-icon">📄</div>
+        <div class="stat-label">Hợp đồng</div>
+        <div class="stat-val">—</div>
+      </div>
+      <div class="stat-card c3">
+        <div class="stat-icon">💰</div>
+        <div class="stat-label">Doanh thu</div>
+        <div class="stat-val">—</div>
+      </div>
+      <div class="stat-card c4">
+        <div class="stat-icon">✅</div>
+        <div class="stat-label">Trạng thái</div>
+        <div class="stat-val">LIVE</div>
+      </div>
+    </div>
+    """
+    return page("Dashboard", content, active="dashboard")
 
 
+# ================= CUSTOMERS =================
 @app.route("/customers", methods=["GET", "POST"])
 def customers():
-
     if request.method == "POST":
         conn = get_conn()
-        cur = conn.cursor()
-
-        cur.execute("""
-        INSERT INTO KhachHang
-        (MaKhachHang, TenKhachHang, MaSoThue, DienThoai, Email)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        request.form.get("ma_kh"),
-        request.form.get("ten_kh"),
-        request.form.get("mst"),
-        request.form.get("dt"),
-        request.form.get("email"))
-
-        conn.commit()
-        conn.close()
-
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+            INSERT INTO KhachHang (MaKhachHang, TenKhachHang, MaSoThue, DienThoai, Email)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            request.form.get("ma_kh"),
+            request.form.get("ten_kh"),
+            request.form.get("mst"),
+            request.form.get("dt"),
+            request.form.get("email"))
+            conn.commit()
+        finally:
+            conn.close()
         return redirect("/customers")
 
     conn = get_conn()
-    cur = conn.cursor()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+        SELECT KhachHangID, MaKhachHang, TenKhachHang, MaSoThue, DienThoai, Email
+        FROM KhachHang ORDER BY KhachHangID DESC
+        """)
+        rows = cur.fetchall()
+    finally:
+        conn.close()
 
-    cur.execute("""
-    SELECT KhachHangID, MaKhachHang, TenKhachHang, MaSoThue, DienThoai, Email
-    FROM KhachHang
-    ORDER BY KhachHangID DESC
-    """)
+    rows_html = ""
+    for r in rows:
+        rows_html += f"""
+        <tr>
+          <td class="id-cell">#{r[0]}</td>
+          <td><span style="font-family:var(--mono);font-size:12px;color:#2563eb">{r[1]}</span></td>
+          <td style="font-weight:500;color:var(--text)">{r[2]}</td>
+          <td class="id-cell">{r[3] or '—'}</td>
+          <td>{r[4] or '—'}</td>
+          <td>{r[5] or '—'}</td>
+          <td>
+            <div class="action-cell">
+              <a href="/customers/edit/{r[0]}" class="btn btn-warning btn-sm">✏ Sửa</a>
+              <a href="/customers/delete/{r[0]}" class="btn btn-danger btn-sm"
+                 onclick="return confirm('Xóa khách hàng này?')">🗑</a>
+            </div>
+          </td>
+        </tr>"""
 
-    rows = cur.fetchall()
-    conn.close()
+    content = f"""
+    <div class="page-header">
+      <div>
+        <div class="page-title">Khách hàng</div>
+        <div class="page-sub">Danh sách khách hàng trong hệ thống</div>
+      </div>
+      <button class="btn btn-primary" onclick="openModal('modal-add')">➕ Thêm mới</button>
+    </div>
 
-    return render_template_string(CUSTOMERS_HTML, customers=rows)
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">Danh sách</span>
+        <span style="font-size:12px;color:var(--muted)">{len(rows)} khách hàng</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>Mã KH</th><th>Tên khách hàng</th>
+            <th>Mã số thuế</th><th>Điện thoại</th><th>Email</th><th>Thao tác</th>
+          </tr>
+        </thead>
+        <tbody>{rows_html}</tbody>
+      </table>
+    </div>
+
+    <!-- MODAL THÊM -->
+    <div id="modal-add" class="modal-bg">
+      <div class="modal-box">
+        <div class="modal-title">➕ Thêm khách hàng mới</div>
+        <form method="POST">
+          <div class="group-box">
+            <div class="group-title">Thông tin cơ bản</div>
+            <div class="form-row cols-2" style="margin-bottom:12px">
+              <div class="form-group">
+                <label>Mã khách hàng *</label>
+                <input name="ma_kh" placeholder="VD: KH001" required>
+              </div>
+              <div class="form-group">
+                <label>Tên khách hàng *</label>
+                <input name="ten_kh" placeholder="Tên công ty / cá nhân" required>
+              </div>
+            </div>
+            <div class="form-row cols-3">
+              <div class="form-group">
+                <label>Mã số thuế</label>
+                <input name="mst" placeholder="0123456789">
+              </div>
+              <div class="form-group">
+                <label>Điện thoại</label>
+                <input name="dt" placeholder="0901 234 567">
+              </div>
+              <div class="form-group">
+                <label>Email</label>
+                <input name="email" type="email" placeholder="email@example.com">
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="submit" class="btn btn-primary">💾 Lưu khách hàng</button>
+            <button type="button" class="btn btn-ghost" onclick="closeModal('modal-add')">Đóng</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    """
+
+    extra = """<script>
+    function openModal(id){ document.getElementById(id).classList.add('open'); }
+    function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+    document.querySelectorAll('.modal-bg').forEach(m=>{
+      m.addEventListener('click',e=>{ if(e.target===m) m.classList.remove('open'); });
+    });
+    </script>"""
+
+    return page("Khách hàng", content, active="customers", extra_head=extra)
 
 
+# ================= DELETE CUSTOMER =================
 @app.route("/customers/delete/<int:id>")
 def delete_customer(id):
     conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("DELETE FROM KhachHang WHERE KhachHangID=?", id)
-
-    conn.commit()
-    conn.close()
-
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM KhachHang WHERE KhachHangID=?", id)
+        conn.commit()
+    finally:
+        conn.close()
     return redirect("/customers")
 
-@app.route("/customers/edit/<int:id>", methods=["GET","POST"])
+
+# ================= EDIT CUSTOMER =================
+@app.route("/customers/edit/<int:id>", methods=["GET", "POST"])
 def edit_customer(id):
-
     conn = get_conn()
-    cur = conn.cursor()
-
-    if request.method == "POST":
+    try:
+        cur = conn.cursor()
+        if request.method == "POST":
+            cur.execute("""
+            UPDATE KhachHang
+            SET MaKhachHang=?, TenKhachHang=?, MaSoThue=?, DienThoai=?, Email=?
+            WHERE KhachHangID=?
+            """,
+            request.form.get("ma_kh"),
+            request.form.get("ten_kh"),
+            request.form.get("mst"),
+            request.form.get("dt"),
+            request.form.get("email"),
+            id)
+            conn.commit()
+            return redirect("/customers")
 
         cur.execute("""
-        UPDATE KhachHang
-        SET MaKhachHang=?,
-            TenKhachHang=?,
-            MaSoThue=?,
-            DienThoai=?,
-            Email=?
-        WHERE KhachHangID=?
-        """,
-        request.form.get("ma_kh"),
-        request.form.get("ten_kh"),
-        request.form.get("mst"),
-        request.form.get("dt"),
-        request.form.get("email"),
-        id)
-
-        conn.commit()
+        SELECT KhachHangID, MaKhachHang, TenKhachHang, MaSoThue, DienThoai, Email
+        FROM KhachHang WHERE KhachHangID=?
+        """, id)
+        row = cur.fetchone()
+    finally:
         conn.close()
 
-        return redirect("/customers")
+    content = f"""
+    <div class="page-header">
+      <div>
+        <div class="page-title">Sửa khách hàng</div>
+        <div class="page-sub">Cập nhật thông tin khách hàng #{id}</div>
+      </div>
+    </div>
+    <div class="form-page">
+      <div class="form-card">
+        <form method="POST">
+          <div class="group-box">
+            <div class="group-title">Thông tin cơ bản</div>
+            <div class="form-row cols-2" style="margin-bottom:12px">
+              <div class="form-group">
+                <label>Mã khách hàng</label>
+                <input name="ma_kh" value="{row[1]}">
+              </div>
+              <div class="form-group">
+                <label>Tên khách hàng</label>
+                <input name="ten_kh" value="{row[2]}">
+              </div>
+            </div>
+            <div class="form-row cols-3">
+              <div class="form-group">
+                <label>Mã số thuế</label>
+                <input name="mst" value="{row[3] or ''}">
+              </div>
+              <div class="form-group">
+                <label>Điện thoại</label>
+                <input name="dt" value="{row[4] or ''}">
+              </div>
+              <div class="form-group">
+                <label>Email</label>
+                <input name="email" value="{row[5] or ''}">
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:16px">
+            <button type="submit" class="btn btn-primary">💾 Cập nhật</button>
+            <a href="/customers" class="btn btn-ghost">↩ Quay lại</a>
+          </div>
+        </form>
+      </div>
+    </div>
+    """
+    return page("Sửa khách hàng", content, active="customers")
 
-    cur.execute("""
-    SELECT KhachHangID,
-           MaKhachHang,
-           TenKhachHang,
-           MaSoThue,
-           DienThoai,
-           Email
-    FROM KhachHang
-    WHERE KhachHangID=?
-    """, id)
 
-    row = cur.fetchone()
+# ================= CONTRACTS =================
+def badge_status(val):
+    m = {"DRAFT":"badge-draft","ACTIVE":"badge-active","DONE":"badge-done"}
+    cls = m.get(val, "badge-draft")
+    return f'<span class="badge {cls}">{val or "DRAFT"}</span>'
 
-    conn.close()
-
-    return render_template_string(EDIT_CUSTOMER_HTML, row=row)
-
+def badge_tt(val):
+    m = {"MONTH":"badge-month","YEAR":"badge-year","ONCE":"badge-once"}
+    cls = m.get(val, "badge-draft")
+    labels = {"MONTH":"Theo tháng","YEAR":"Theo năm","ONCE":"Một lần"}
+    return f'<span class="badge {cls}">{labels.get(val, val or "—")}</span>'
 
 @app.route("/contracts", methods=["GET", "POST"])
 def contracts():
     conn = get_conn()
-    cur = conn.cursor()
+    try:
+        cur = conn.cursor()
 
-    # ================= THÊM MỚI =================
-    if request.method == "POST":
+        if request.method == "POST":
+            cur.execute("""
+            INSERT INTO HopDong
+            (SoHopDong, KhachHangID, NgayKy, NgayBatDau, NgayKetThuc,
+             TongTien, TienTamUng, NgayTamUng, LoaiThanhToan, TrangThai)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            request.form.get("so_hd"),
+            request.form.get("kh_id"),
+            request.form.get("ngay_ky") or None,
+            request.form.get("ngay_bd") or None,
+            request.form.get("ngay_kt") or None,
+            request.form.get("tong_tien") or None,
+            request.form.get("tam_ung") or None,
+            request.form.get("ngay_tu") or None,
+            request.form.get("loai_tt"),
+            "DRAFT")
+            conn.commit()
+            return redirect("/contracts")
+
+        cur.execute("SELECT KhachHangID, TenKhachHang FROM KhachHang ORDER BY TenKhachHang")
+        customers = cur.fetchall()
+
+        # cols: [0]ID [1]SoHD [2]KhachHangID [3]NgayKy [4]NgayBatDau [5]NgayKetThuc
+        #       [6]TongTien [7]TienTamUng [8]NgayTamUng [9]LoaiThanhToan [10]TrangThai
         cur.execute("""
-        INSERT INTO HopDong
-        (
-            SoHopDong,
-            KhachHangID,
-            NgayKy,
-            NgayBatDau,
-            NgayKetThuc,
-            TongTien,
-            TienTamUng,
-            NgayTamUng,
-            LoaiThanhToan,
-            TrangThai
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        request.form.get("so_hd"),
-        request.form.get("kh_id"),
-        request.form.get("ngay_ky"),
-        request.form.get("ngay_bd"),
-        request.form.get("ngay_kt"),
-        request.form.get("tong_tien"),
-        request.form.get("tam_ung"),
-        request.form.get("ngay_tu"),
-        request.form.get("loai_tt"),
-        "DRAFT")
-
-        conn.commit()
+        SELECT h.HopDongID, h.SoHopDong, k.TenKhachHang,
+               h.NgayKy, h.NgayBatDau, h.NgayKetThuc,
+               h.TongTien, h.TienTamUng,
+               h.LoaiThanhToan, h.TrangThai,
+               h.HopDongID as ActionID
+        FROM HopDong h
+        LEFT JOIN KhachHang k ON h.KhachHangID = k.KhachHangID
+        ORDER BY h.HopDongID DESC
+        """)
+        data = cur.fetchall()
+    finally:
         conn.close()
 
-        return redirect("/contracts")
-
-    # ================= LOAD DATA =================
-    cur.execute("SELECT KhachHangID, TenKhachHang FROM KhachHang")
-    customers = cur.fetchall()
-
-    cur.execute("""
-    SELECT HopDongID,
-               SoHopDong,
-               KhachHangID,
-               NgayKy,
-               NgayBatDau,
-               NgayKetThuc,
-               TongTien,
-               TienTamUng,
-               NgayTamUng,
-               LoaiThanhToan,
-               TrangThai
-    FROM HopDong
-    ORDER BY HopDongID DESC
-    """)
-
-    data = cur.fetchall()
-    rows = []
-
-    # Duyệt qua mỗi bản ghi trong data và format các cột
+    rows_html = ""
     for r in data:
-        print(r)  # In ra để kiểm tra dữ liệu
-        r = list(r)  # Chuyển tuple thành list để có thể sửa đổi
+        r = list(r)
+        # Format money
+        def fmt(v):
+            if v is None: return "—"
+            v = float(v) if isinstance(v, Decimal) else v
+            return format(int(v), ",").replace(",", ".")
 
-        # Format Tổng tiền (cột 6)
-        if r[6] is not None:
-            total_money = float(r[6]) if isinstance(r[6], Decimal) else r[6]
-            r[6] = format(int(total_money or 0), ",").replace(",", ".")
+        tong = fmt(r[6])
+        tam  = fmt(r[7])
 
-        # Format Tạm ứng (cột 7)
-        if r[7] is not None:
-            advance_money = float(r[7]) if isinstance(r[7], Decimal) else r[7]
-            r[7] = format(int(advance_money or 0), ",").replace(",", ".")
+        rows_html += f"""
+        <tr>
+          <td class="id-cell">#{r[0]}</td>
+          <td style="font-family:var(--mono);font-size:12px;color:#2563eb">{r[1]}</td>
+          <td style="font-weight:500;color:var(--text)">{r[2] or '—'}</td>
+          <td class="id-cell">{r[3] or '—'}</td>
+          <td class="id-cell">{r[4] or '—'}</td>
+          <td class="id-cell">{r[5] or '—'}</td>
+          <td class="money-cell">{tong}</td>
+          <td class="money-cell">{tam}</td>
+          <td>{badge_tt(r[8])}</td>
+          <td>{badge_status(r[9])}</td>
+          <td>
+            <div class="action-cell">
+              <a href="/contracts/edit/{r[10]}" class="btn btn-warning btn-sm">✏ Sửa</a>
+              <a href="/contracts/delete/{r[10]}" class="btn btn-danger btn-sm"
+                 onclick="return confirm('Xóa hợp đồng này?')">🗑</a>
+            </div>
+          </td>
+        </tr>"""
 
-        rows.append(r)
+    cust_opts = "".join(f'<option value="{c[0]}">{c[1]}</option>' for c in customers)
 
-    conn.close()  # Đảm bảo conn.close() không bị thụt lề sai
+    content = f"""
+    <div class="page-header">
+      <div>
+        <div class="page-title">Hợp đồng</div>
+        <div class="page-sub">Quản lý hợp đồng khách hàng</div>
+      </div>
+      <button class="btn btn-primary" onclick="openModal('modal-add')">➕ Thêm hợp đồng</button>
+    </div>
 
-    # Trả về template đã render với dữ liệu
-    return render_template_string(
-        CONTRACT_HTML,
-        customers=customers,
-        rows=rows
-    )
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">Danh sách hợp đồng</span>
+        <span style="font-size:12px;color:var(--muted)">{len(data)} hợp đồng</span>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>Số HĐ</th><th>Khách hàng</th>
+              <th>Ngày ký</th><th>Bắt đầu</th><th>Kết thúc</th>
+              <th>Tổng tiền</th><th>Tạm ứng</th>
+              <th>Thanh toán</th><th>Trạng thái</th><th>Thao tác</th>
+            </tr>
+          </thead>
+          <tbody>{rows_html}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- MODAL THÊM HỢP ĐỒNG -->
+    <div id="modal-add" class="modal-bg">
+      <div class="modal-box">
+        <div class="modal-title">📄 Thêm hợp đồng mới</div>
+        <form method="POST">
+          <div class="group-box">
+            <div class="group-title">Thông tin chung</div>
+            <div class="form-row cols-4">
+              <div class="form-group">
+                <label>Số hợp đồng</label>
+                <input name="so_hd" placeholder="HD2025-001">
+              </div>
+              <div class="form-group">
+                <label>Tên hợp đồng</label>
+                <input name="ten_hd" placeholder="Tên hợp đồng">
+              </div>
+              <div class="form-group">
+                <label>Khách hàng</label>
+                <select name="kh_id">
+                  <option value="">-- Chọn --</option>
+                  {cust_opts}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="group-box">
+            <div class="group-title">Thời gian</div>
+            <div class="form-row cols-3">
+              <div class="form-group">
+                <label>Ngày ký</label>
+                <input type="date" name="ngay_ky">
+              </div>
+              <div class="form-group">
+                <label>Ngày bắt đầu</label>
+                <input type="date" name="ngay_bd">
+              </div>
+              <div class="form-group">
+                <label>Ngày kết thúc</label>
+                <input type="date" name="ngay_kt">
+              </div>
+            </div>
+          </div>
+
+          <div class="group-box">
+            <div class="group-title">Tài chính</div>
+            <div class="form-row cols-3">
+              <div class="form-group">
+                <label>Tổng tiền</label>
+                <input name="tong_tien" placeholder="0">
+              </div>
+              <div class="form-group">
+                <label>Tạm ứng</label>
+                <input name="tam_ung" placeholder="0">
+              </div>
+              <div class="form-group">
+                <label>Ngày tạm ứng</label>
+                <input type="date" name="ngay_tu">
+              </div>
+            </div>
+            <div class="form-row cols-2" style="margin-top:12px">
+              <div class="form-group">
+                <label>Loại thanh toán</label>
+                <select name="loai_tt">
+                  <option value="MONTH">Theo tháng</option>
+                  <option value="YEAR">Theo năm</option>
+                  <option value="ONCE">Một lần</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="submit" class="btn btn-primary">💾 Lưu hợp đồng</button>
+            <button type="button" class="btn btn-ghost" onclick="closeModal('modal-add')">Đóng</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    """
+
+    extra = """<script>
+    function openModal(id){ document.getElementById(id).classList.add('open'); }
+    function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+    document.querySelectorAll('.modal-bg').forEach(m=>{
+      m.addEventListener('click',e=>{ if(e.target===m) m.classList.remove('open'); });
+    });
+    </script>"""
+
+    return page("Hợp đồng", content, active="contracts", extra_head=extra)
+
+
+# ================= DELETE CONTRACT =================
 @app.route("/contracts/delete/<int:id>")
 def delete_contract(id):
-
     conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("DELETE FROM HopDong WHERE HopDongID=?", id)
-
-    conn.commit()
-    conn.close()
-
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM HopDong WHERE HopDongID=?", id)
+        conn.commit()
+    finally:
+        conn.close()
     return redirect("/contracts")
+
+
+# ================= EDIT CONTRACT =================
 @app.route("/contracts/edit/<int:id>", methods=["GET", "POST"])
 def edit_contract(id):
     conn = get_conn()
-    cur = conn.cursor()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT KhachHangID, TenKhachHang FROM KhachHang ORDER BY TenKhachHang")
+        customers = cur.fetchall()
 
-    # ================= LẤY DỮ LIỆU KHÁCH HÀNG =================
-    cur.execute("SELECT KhachHangID, TenKhachHang FROM KhachHang")
-    customers = cur.fetchall()  # Lấy tất cả khách hàng từ cơ sở dữ liệu
+        if request.method == "POST":
+            tong_tien = request.form.get("tong_tien", "").replace(".", "") or None
+            tam_ung   = request.form.get("tam_ung", "").replace(".", "") or None
+            try:
+                tong_tien = float(tong_tien) if tong_tien else None
+                tam_ung   = float(tam_ung)   if tam_ung   else None
+            except ValueError:
+                tong_tien = tam_ung = None
 
-    # ================= UPDATE =================
-    if request.method == "POST":
-        so_hd = request.form.get("so_hd")
-        kh_id = request.form.get("kh_id")
-        ngay_ky = request.form.get("ngay_ky")
-        ngay_bd = request.form.get("ngay_bd")
-        ngay_kt = request.form.get("ngay_kt")
-        tong_tien = request.form.get("tong_tien")
-        tam_ung = request.form.get("tam_ung")
-        loai_tt = request.form.get("loai_tt")
-        trang_thai = request.form.get("trang_thai")
-        ngay_tu = request.form.get("ngay_tu")
+            cur.execute("""
+            UPDATE HopDong
+            SET SoHopDong=?, KhachHangID=?, NgayKy=?, NgayBatDau=?, NgayKetThuc=?,
+                TongTien=?, TienTamUng=?, NgayTamUng=?, LoaiThanhToan=?, TrangThai=?
+            WHERE HopDongID=?
+            """,
+            request.form.get("so_hd"),
+            request.form.get("kh_id"),
+            request.form.get("ngay_ky") or None,
+            request.form.get("ngay_bd") or None,
+            request.form.get("ngay_kt") or None,
+            tong_tien, tam_ung,
+            request.form.get("ngay_tu") or None,
+            request.form.get("loai_tt"),
+            request.form.get("trang_thai"),
+            id)
+            conn.commit()
+            return redirect("/contracts")  # FIX: redirect sau POST
 
-        # Loại bỏ dấu phân cách ngàn (nếu có) trước khi chuyển thành số
-        if tong_tien:
-            tong_tien = tong_tien.replace(".", "")  # Loại bỏ dấu phân cách ngàn
-        if tam_ung:
-            tam_ung = tam_ung.replace(".", "")  # Loại bỏ dấu phân cách ngàn
-
-        # Kiểm tra và xử lý giá trị Tổng tiền và Tạm ứng
-        try:
-            tong_tien = float(tong_tien) if tong_tien else None  # Chuyển đổi Tổng tiền thành float nếu có giá trị
-            tam_ung = float(tam_ung) if tam_ung else None  # Chuyển đổi Tạm ứng thành float nếu có giá trị
-        except ValueError:
-            # Nếu không thể chuyển đổi giá trị, gán về None
-            tong_tien = None
-            tam_ung = None
-
-        # Cập nhật hợp đồng trong cơ sở dữ liệu
         cur.execute("""
-        UPDATE HopDong
-        SET SoHopDong      = ?,
-            KhachHangID    = ?,
-            NgayKy         = ?,
-            NgayBatDau     = ?,
-            NgayKetThuc    = ?,
-            TongTien       = ?,
-            TienTamUng     = ?,
-            NgayTamUng     = ?,
-            LoaiThanhToan  = ?,
-            TrangThai      = ?
-        WHERE HopDongID = ?
-        """,
-        so_hd, kh_id, ngay_ky, ngay_bd, ngay_kt, tong_tien, tam_ung, ngay_tu, loai_tt, trang_thai, id)
+        SELECT HopDongID, SoHopDong, KhachHangID, NgayKy, NgayBatDau, NgayKetThuc,
+               TongTien, TienTamUng, NgayTamUng, LoaiThanhToan, TrangThai
+        FROM HopDong WHERE HopDongID=?
+        """, id)
+        raw = cur.fetchone()
+    finally:
+        conn.close()
 
-        conn.commit()
+    r = list(raw)
+    def fmt(v):
+        if v is None: return ""
+        v = float(v) if isinstance(v, Decimal) else v
+        return format(int(v), ",").replace(",", ".")
 
-    # ================= LOAD DATA =================
-    cur.execute("""
-    SELECT HopDongID,
-               SoHopDong,
-               KhachHangID,
-               NgayKy,
-               NgayBatDau,
-               NgayKetThuc,
-               TongTien,
-               TienTamUng,
-               NgayTamUng,
-               LoaiThanhToan,
-               TrangThai
-    FROM HopDong
-    WHERE HopDongID = ?
-    """, id)
+    r[6] = fmt(r[6])
+    r[7] = fmt(r[7])
 
-    data = cur.fetchall()  # Lấy dữ liệu từ cơ sở dữ liệu
-    rows = []
+    def date_val(v):
+        if not v: return ""
+        return str(v)[:10]
 
-    # Duyệt qua mỗi bản ghi trong data và format các cột
-    for r in data:
-        r = list(r)  # Chuyển tuple thành list để có thể sửa đổi
-
-        # Format Tổng tiền (cột 6)
-        if r[6] is not None:
-            total_money = float(r[6]) if isinstance(r[6], Decimal) else r[6]
-            r[6] = format(int(total_money or 0), ",").replace(",", ".")
-
-        # Format Tạm ứng (cột 7)
-        if r[7] is not None:
-            advance_money = float(r[7]) if isinstance(r[7], Decimal) else r[7]
-            r[7] = format(int(advance_money or 0), ",").replace(",", ".")
-
-        rows.append(r)
-
-    conn.close()  # Đảm bảo đóng kết nối sau khi xử lý
-
-    # Trả về template đã render với dữ liệu
-    return render_template_string(
-        EDIT_CONTRACT_HTML,
-        row=rows[0],  # Trả về bản ghi đầu tiên
-        customers=customers  # Truyền danh sách khách hàng vào form
+    cust_opts = "".join(
+        f'<option value="{c[0]}" {"selected" if c[0]==r[2] else ""}>{c[1]}</option>'
+        for c in customers
     )
-if __name__ == "__main__":
-    if os.getenv("RENDER"):
-        init_sqlite()
 
+    tt_opts = ""
+    for val, label in [("MONTH","Theo tháng"),("YEAR","Theo năm"),("ONCE","Một lần")]:
+        sel = "selected" if r[9] == val else ""
+        tt_opts += f'<option value="{val}" {sel}>{label}</option>'
+
+    status_opts = ""
+    for val, label in [("DRAFT","Draft"),("ACTIVE","Active"),("DONE","Done")]:
+        sel = "selected" if r[10] == val else ""
+        status_opts += f'<option value="{val}" {sel}>{label}</option>'
+
+    content = f"""
+    <div class="page-header">
+      <div>
+        <div class="page-title">Sửa hợp đồng</div>
+        <div class="page-sub">Cập nhật thông tin hợp đồng #{id}</div>
+      </div>
+    </div>
+
+    <form method="POST" style="max-width:860px">
+      <div class="group-box">
+        <div class="group-title">Thông tin chung</div>
+        <div class="form-row cols-2" style="margin-bottom:12px">
+          <div class="form-group">
+            <label>Số hợp đồng</label>
+            <input name="so_hd" value="{r[1]}">
+          </div>
+          <div class="form-group">
+            <label>Khách hàng</label>
+            <select name="kh_id">{cust_opts}</select>
+          </div>
+        </div>
+      </div>
+
+      <div class="group-box">
+        <div class="group-title">Thời gian</div>
+        <div class="form-row cols-3">
+          <div class="form-group">
+            <label>Ngày ký</label>
+            <input type="date" name="ngay_ky" value="{date_val(r[3])}">
+          </div>
+          <div class="form-group">
+            <label>Ngày bắt đầu</label>
+            <input type="date" name="ngay_bd" value="{date_val(r[4])}">
+          </div>
+          <div class="form-group">
+            <label>Ngày kết thúc</label>
+            <input type="date" name="ngay_kt" value="{date_val(r[5])}">
+          </div>
+        </div>
+      </div>
+
+      <div class="group-box">
+        <div class="group-title">Tài chính & Trạng thái</div>
+        <div class="form-row cols-3" style="margin-bottom:12px">
+          <div class="form-group">
+            <label>Tổng tiền</label>
+            <input name="tong_tien" value="{r[6]}">
+          </div>
+          <div class="form-group">
+            <label>Tạm ứng</label>
+            <input name="tam_ung" value="{r[7]}">
+          </div>
+          <div class="form-group">
+            <label>Ngày tạm ứng</label>
+            <input type="date" name="ngay_tu" value="{date_val(r[8])}">
+          </div>
+        </div>
+        <div class="form-row cols-2">
+          <div class="form-group">
+            <label>Loại thanh toán</label>
+            <select name="loai_tt">{tt_opts}</select>
+          </div>
+          <div class="form-group">
+            <label>Trạng thái</label>
+            <select name="trang_thai">{status_opts}</select>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:4px">
+        <button type="submit" class="btn btn-primary">💾 Cập nhật</button>
+        <a href="/contracts" class="btn btn-ghost">↩ Quay lại</a>
+      </div>
+    </form>
+    """
+    return page("Sửa hợp đồng", content, active="contracts")
+
+
+if __name__ == "__main__":
     app.run(debug=True)
