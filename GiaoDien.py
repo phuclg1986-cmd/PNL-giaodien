@@ -524,11 +524,104 @@ def page(title, content, active="", extra_head=""):
 # ================= DASHBOARD =================
 @app.route("/")
 def home():
-    content = """
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+
+        # Tổng khách hàng
+        cur.execute("SELECT COUNT(*) FROM KhachHang")
+        total_kh = cur.fetchone()[0]
+
+        # Tổng hợp đồng
+        cur.execute("SELECT COUNT(*) FROM HopDong")
+        total_hd = cur.fetchone()[0]
+
+        # Tổng doanh thu (tổng TongTien các hợp đồng ACTIVE + DONE)
+        cur.execute("SELECT ISNULL(SUM(TongTien),0) FROM HopDong WHERE TrangThai IN ('ACTIVE','DONE')")
+        total_dt = cur.fetchone()[0]
+        total_dt = float(total_dt) if total_dt else 0
+
+        # Hợp đồng ACTIVE
+        cur.execute("SELECT COUNT(*) FROM HopDong WHERE TrangThai='ACTIVE'")
+        total_active = cur.fetchone()[0]
+
+        # Cảnh báo: hợp đồng sắp đến hạn trong 30 ngày tới hoặc đã quá hạn mà chưa DONE
+        cur.execute("""
+            SELECT h.HopDongID, h.SoHopDong, k.TenKhachHang,
+                   h.NgayKetThuc, h.TongTien, h.TrangThai,
+                   DATEDIFF(day, GETDATE(), h.NgayKetThuc) as SoNgay
+            FROM HopDong h
+            LEFT JOIN KhachHang k ON h.KhachHangID = k.KhachHangID
+            WHERE h.NgayKetThuc IS NOT NULL
+              AND h.TrangThai != 'DONE'
+              AND DATEDIFF(day, GETDATE(), h.NgayKetThuc) <= 30
+            ORDER BY h.NgayKetThuc ASC
+        """)
+        canh_bao = cur.fetchall()
+
+    finally:
+        conn.close()
+
+    def fmt_money(v):
+        if not v: return "0"
+        return format(int(float(v)), ",").replace(",", ".")
+
+    # Render cảnh báo
+    canh_bao_rows = ""
+    for r in canh_bao:
+        so_ngay = r[6]
+        if so_ngay < 0:
+            badge = f'<span class="badge badge-once">Quá hạn {abs(so_ngay)} ngày</span>'
+        elif so_ngay == 0:
+            badge = '<span class="badge badge-once">Hết hạn hôm nay</span>'
+        elif so_ngay <= 7:
+            badge = f'<span class="badge badge-once">Còn {so_ngay} ngày</span>'
+        else:
+            badge = f'<span class="badge badge-month">Còn {so_ngay} ngày</span>'
+
+        canh_bao_rows += f"""
+        <tr>
+          <td style="font-family:var(--mono);font-size:12px;color:#2563eb">{r[1]}</td>
+          <td style="font-weight:500">{r[2] or '—'}</td>
+          <td class="id-cell">{str(r[3])[:10] if r[3] else '—'}</td>
+          <td class="money-cell">{fmt_money(r[4])}</td>
+          <td>{badge}</td>
+          <td>
+            <a href="/contracts/edit/{r[0]}" class="btn btn-warning btn-sm">✏ Xử lý</a>
+          </td>
+        </tr>"""
+
+    canh_bao_section = ""
+    if canh_bao_rows:
+        canh_bao_section = f"""
+        <div class="card" style="margin-top:0; border: 1px solid #fca5a5;">
+          <div class="card-head" style="background:#fff7f7">
+            <span class="card-title" style="color:#dc2626">⚠️ Cảnh báo hợp đồng sắp đến hạn</span>
+            <span style="font-size:12px;color:#dc2626;font-weight:600">{len(canh_bao)} hợp đồng cần xử lý</span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Số HĐ</th><th>Khách hàng</th><th>Ngày kết thúc</th>
+                <th>Tổng tiền</th><th>Trạng thái</th><th>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>{canh_bao_rows}</tbody>
+          </table>
+        </div>"""
+    else:
+        canh_bao_section = """
+        <div class="card" style="margin-top:0; border:1px solid #bbf7d0">
+          <div class="card-head" style="background:#f0fdf4">
+            <span class="card-title" style="color:#16a34a">✅ Không có hợp đồng nào sắp đến hạn</span>
+          </div>
+        </div>"""
+
+    content = f"""
     <div class="page-header">
       <div>
         <div class="page-title">Dashboard</div>
-        <div class="page-sub">Tổng quan hệ thống ERP</div>
+        <div class="page-sub">Tổng quan hệ thống ERP — cập nhật theo thời gian thực</div>
       </div>
     </div>
 
@@ -536,23 +629,28 @@ def home():
       <div class="stat-card c1">
         <div class="stat-icon">👤</div>
         <div class="stat-label">Khách hàng</div>
-        <div class="stat-val">—</div>
+        <div class="stat-val">{total_kh}</div>
       </div>
       <div class="stat-card c2">
         <div class="stat-icon">📄</div>
         <div class="stat-label">Hợp đồng</div>
-        <div class="stat-val">—</div>
+        <div class="stat-val">{total_hd}</div>
       </div>
       <div class="stat-card c3">
         <div class="stat-icon">💰</div>
-        <div class="stat-label">Doanh thu</div>
-        <div class="stat-val">—</div>
+        <div class="stat-label">Doanh thu (VNĐ)</div>
+        <div class="stat-val" style="font-size:18px">{fmt_money(total_dt)}</div>
       </div>
       <div class="stat-card c4">
         <div class="stat-icon">✅</div>
-        <div class="stat-label">Trạng thái</div>
-        <div class="stat-val">LIVE</div>
+        <div class="stat-label">Đang hoạt động</div>
+        <div class="stat-val">{total_active}</div>
       </div>
+    </div>
+
+    <div style="margin-bottom:12px">
+      <div class="page-title" style="font-size:15px;margin-bottom:12px">⚠️ Cảnh báo thanh toán</div>
+      {canh_bao_section}
     </div>
     """
     return page("Dashboard", content, active="dashboard")
