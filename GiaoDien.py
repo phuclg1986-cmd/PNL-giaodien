@@ -56,6 +56,9 @@ def init_sqlite():
 
     conn.commit()
     conn.close()
+    # 👇 PHẢI CÓ ĐOẠN NÀY
+if os.getenv("RENDER"):
+    init_sqlite()
 
 # ================= DASHBOARD =================
 DASHBOARD = """
